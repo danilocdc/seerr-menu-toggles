@@ -4,7 +4,11 @@ import { menuMessages } from '@app/components/Layout/Sidebar';
 import useClickOutside from '@app/hooks/useClickOutside';
 import useSettings from '@app/hooks/useSettings';
 import { Permission, useUser } from '@app/hooks/useUser';
-import { buildMenuLinks, isCurrentUrl } from '@app/utils/menuLinks';
+import {
+  buildMenuLinks,
+  isCurrentUrl,
+  useOpenGroups,
+} from '@app/utils/menuLinks';
 import { Transition } from '@headlessui/react';
 import {
   ChevronRightIcon,
@@ -34,7 +38,14 @@ import {
 import type { BuiltinMenuItemId } from '@server/constants/menu';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { cloneElement, useEffect, useRef, useState, type JSX } from 'react';
+import {
+  Fragment,
+  cloneElement,
+  useEffect,
+  useRef,
+  useState,
+  type JSX,
+} from 'react';
 import { useIntl } from 'react-intl';
 
 interface MobileMenuProps {
@@ -176,7 +187,7 @@ const MobileMenu = ({
       type: link.permissionType ?? 'and',
     });
 
-  const { links, groupLinks, groupName } = buildMenuLinks(
+  const { links, groups } = buildMenuLinks(
     currentSettings.menuItems,
     Object.fromEntries(menuLinks.map((link) => [link.id, link])) as Record<
       BuiltinMenuItemId,
@@ -190,12 +201,21 @@ const MobileMenu = ({
     })
   );
   const visibleLinks = links.filter(hasLinkPermission);
-  const visibleGroupLinks = groupLinks.filter(hasLinkPermission);
-  // The collapsed group is only reachable from the expanded menu
-  const hasMoreButton = visibleLinks.length > 5 || visibleGroupLinks.length > 0;
+  // Groups without a visible item are left out
+  const visibleGroups = groups
+    .map((group) => ({
+      ...group,
+      links: group.links.filter(hasLinkPermission),
+    }))
+    .filter((group) => group.links.length > 0);
+  // Collapsed groups are only reachable from the expanded menu
+  const hasMoreButton = visibleLinks.length > 5 || visibleGroups.length > 0;
 
   // A custom item with filters wins over the built-in page it points to
-  const isCustomLinkActive = [...visibleLinks, ...visibleGroupLinks].some(
+  const isCustomLinkActive = [
+    ...visibleLinks,
+    ...visibleGroups.flatMap((group) => group.links),
+  ].some(
     (link) => !link.activeRegExp && isCurrentUrl(link.href, router.asPath)
   );
   const isLinkActive = (link: MenuLink): boolean =>
@@ -203,14 +223,11 @@ const MobileMenu = ({
       ? !isCustomLinkActive && !!router.pathname.match(link.activeRegExp)
       : isCurrentUrl(link.href, router.asPath);
 
-  const [isGroupOpen, setIsGroupOpen] = useState(false);
-  const isGroupLinkActive = visibleGroupLinks.some(isLinkActive);
-
-  useEffect(() => {
-    if (isGroupLinkActive) {
-      setIsGroupOpen(true);
-    }
-  }, [isGroupLinkActive]);
+  const { isGroupOpen, toggleGroup } = useOpenGroups(
+    visibleGroups.flatMap((group, index) =>
+      group.links.some(isLinkActive) ? [index] : []
+    )
+  );
 
   useEffect(() => {
     if (openIssuesCount) {
@@ -284,28 +301,28 @@ const MobileMenu = ({
         className="absolute left-0 right-0 top-0 flex w-full -translate-y-full flex-col space-y-6 border-t border-gray-600 bg-gray-900/90 px-6 py-6 font-semibold text-gray-100 backdrop-blur"
       >
         {visibleLinks.map(renderOverlayLink)}
-        {visibleGroupLinks.length > 0 && (
-          <>
+        {visibleGroups.map((group, index) => (
+          <Fragment key={`group-${index}`}>
             <button
               type="button"
-              onClick={() => setIsGroupOpen(!isGroupOpen)}
-              aria-expanded={isGroupOpen}
+              onClick={() => toggleGroup(index)}
+              aria-expanded={isGroupOpen(index)}
               className="flex items-center text-gray-300"
             >
               <ChevronRightIcon
                 className={`h-5 w-5 transition-transform ${
-                  isGroupOpen ? 'rotate-90' : ''
+                  isGroupOpen(index) ? 'rotate-90' : ''
                 }`}
               />
-              <span className="ml-2">{groupName}</span>
+              <span className="ml-2">{group.name}</span>
             </button>
-            {isGroupOpen && (
+            {isGroupOpen(index) && (
               <div className="flex flex-col space-y-6 pl-7">
-                {visibleGroupLinks.map(renderOverlayLink)}
+                {group.links.map(renderOverlayLink)}
               </div>
             )}
-          </>
-        )}
+          </Fragment>
+        ))}
       </Transition>
       <div className="padding-bottom-safe border-t border-gray-600 bg-gray-800/90 backdrop-blur">
         <div className="flex h-full items-center justify-between px-6 py-4 text-gray-100">

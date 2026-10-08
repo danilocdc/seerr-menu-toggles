@@ -5,7 +5,11 @@ import useClickOutside from '@app/hooks/useClickOutside';
 import useSettings from '@app/hooks/useSettings';
 import { Permission, useUser } from '@app/hooks/useUser';
 import defineMessages from '@app/utils/defineMessages';
-import { buildMenuLinks, isCurrentUrl } from '@app/utils/menuLinks';
+import {
+  buildMenuLinks,
+  isCurrentUrl,
+  useOpenGroups,
+} from '@app/utils/menuLinks';
 import { Transition, TransitionChild } from '@headlessui/react';
 import {
   ChevronRightIcon,
@@ -24,7 +28,7 @@ import type { BuiltinMenuItemId } from '@server/constants/menu';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import { useIntl } from 'react-intl';
 
 export const menuMessages = defineMessages('components.Layout.Sidebar', {
@@ -168,7 +172,7 @@ const Sidebar = ({
       type: link.permissionType ?? 'and',
     });
 
-  const { links, groupLinks, groupName } = buildMenuLinks(
+  const { links, groups } = buildMenuLinks(
     currentSettings.menuItems,
     builtinLinks,
     (item): SidebarLinkProps => ({
@@ -178,10 +182,19 @@ const Sidebar = ({
     })
   );
   const visibleLinks = links.filter(hasLinkPermission);
-  const visibleGroupLinks = groupLinks.filter(hasLinkPermission);
+  // Groups without a visible item are left out
+  const visibleGroups = groups
+    .map((group) => ({
+      ...group,
+      links: group.links.filter(hasLinkPermission),
+    }))
+    .filter((group) => group.links.length > 0);
 
   // A custom item with filters wins over the built-in page it points to
-  const isCustomLinkActive = [...visibleLinks, ...visibleGroupLinks].some(
+  const isCustomLinkActive = [
+    ...visibleLinks,
+    ...visibleGroups.flatMap((group) => group.links),
+  ].some(
     (link) => !link.activeRegExp && isCurrentUrl(link.href, router.asPath)
   );
   const isLinkActive = (link: SidebarLinkProps) =>
@@ -189,14 +202,11 @@ const Sidebar = ({
       ? !isCustomLinkActive && !!router.pathname.match(link.activeRegExp)
       : isCurrentUrl(link.href, router.asPath);
 
-  const [isGroupOpen, setIsGroupOpen] = useState(false);
-  const isGroupLinkActive = visibleGroupLinks.some(isLinkActive);
-
-  useEffect(() => {
-    if (isGroupLinkActive) {
-      setIsGroupOpen(true);
-    }
-  }, [isGroupLinkActive]);
+  const { isGroupOpen, toggleGroup } = useOpenGroups(
+    visibleGroups.flatMap((group, index) =>
+      group.links.some(isLinkActive) ? [index] : []
+    )
+  );
 
   useEffect(() => {
     if (openIssuesCount) {
@@ -293,33 +303,30 @@ const Sidebar = ({
     );
   };
 
-  const renderGroup = (
+  const renderGroups = (
     renderLink: (sidebarLink: SidebarLinkProps) => React.ReactNode,
     textSize: string
   ) =>
-    groupName !== undefined &&
-    visibleGroupLinks.length > 0 && (
-      <>
+    visibleGroups.map((group, index) => (
+      <Fragment key={`group-${index}`}>
         <button
           type="button"
-          onClick={() => setIsGroupOpen(!isGroupOpen)}
-          aria-expanded={isGroupOpen}
+          onClick={() => toggleGroup(index)}
+          aria-expanded={isGroupOpen(index)}
           className={`flex w-full items-center rounded-md px-2 py-2 ${textSize} font-medium leading-6 text-gray-300 transition duration-150 ease-in-out hover:bg-gray-700 hover:text-white focus:bg-gray-700 focus:outline-none`}
         >
           <ChevronRightIcon
             className={`mr-3 h-6 w-6 transition-transform ${
-              isGroupOpen ? 'rotate-90' : ''
+              isGroupOpen(index) ? 'rotate-90' : ''
             }`}
           />
-          {groupName}
+          {group.name}
         </button>
-        {isGroupOpen && (
-          <div className="space-y-4 pl-6">
-            {visibleGroupLinks.map(renderLink)}
-          </div>
+        {isGroupOpen(index) && (
+          <div className="space-y-4 pl-6">{group.links.map(renderLink)}</div>
         )}
-      </>
-    );
+      </Fragment>
+    ));
 
   return (
     <>
@@ -372,7 +379,7 @@ const Sidebar = ({
                     </div>
                     <nav className="mt-10 flex-1 space-y-4 px-4">
                       {visibleLinks.map(renderMobileLink)}
-                      {renderGroup(renderMobileLink, 'text-base')}
+                      {renderGroups(renderMobileLink, 'text-base')}
                     </nav>
                     {hasPermission(Permission.ADMIN) && (
                       <div className="px-2">
@@ -408,7 +415,7 @@ const Sidebar = ({
               </div>
               <nav className="mt-8 flex-1 space-y-4 px-4">
                 {visibleLinks.map(renderDesktopLink)}
-                {renderGroup(renderDesktopLink, 'text-lg')}
+                {renderGroups(renderDesktopLink, 'text-lg')}
               </nav>
               {hasPermission(Permission.ADMIN) && (
                 <div className="px-2">

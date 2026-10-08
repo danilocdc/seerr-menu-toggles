@@ -32,7 +32,7 @@ const messages = defineMessages('components.Settings.SettingsMenu', {
   menu: 'Menu',
   menuItems: 'Menu Items',
   menuItemsDescription:
-    'Drag to reorder the sidebar and the mobile menu. Items below the collapsed group only show after clicking it. A hidden item can still be opened by its address; Users and Settings are always shown.',
+    'Drag to reorder the sidebar and the mobile menu. Items below a collapsed group, up to the next one, only show after clicking it. A hidden item can still be opened by its address; Users and Settings are always shown.',
   customItemsTip:
     'A custom item opens any Seerr page. To list movies or series with filters, apply the filters on the Movies or Series page and copy its address.',
   collapsedGroup: 'Collapsed group',
@@ -45,6 +45,7 @@ const messages = defineMessages('components.Settings.SettingsMenu', {
   alwaysShown: 'Always shown',
   dragToReorder: 'Drag to reorder',
   addItem: 'Add Item',
+  addGroup: 'Add Group',
   resetMenu: 'Reset to Default',
   toastSettingsSuccess: 'Settings saved successfully!',
   toastSettingsFailure: 'Something went wrong while saving settings.',
@@ -259,6 +260,18 @@ const MenuRow = ({
             className="lg:flex-1"
           />
         )}
+        {item.type === 'group' && (
+          <div className="flex items-center lg:ml-auto">
+            <Button
+              buttonSize="sm"
+              buttonType="danger"
+              title={intl.formatMessage(globalMessages.delete)}
+              onClick={onDelete}
+            >
+              <TrashIcon />
+            </Button>
+          </div>
+        )}
         {item.type !== 'group' && (
           <div className="flex items-center gap-3 lg:ml-auto">
             <div
@@ -330,8 +343,9 @@ const SettingsMenu = () => {
     return null;
   }
 
-  // Items after the group row are shown nested under it
-  const groupIndex = items.findIndex((item) => item.type === 'group');
+  // Items after a group row are shown nested under it
+  const firstGroupIndex = items.findIndex((item) => item.type === 'group');
+  const openPartEnd = firstGroupIndex === -1 ? items.length : firstGroupIndex;
 
   const moveItem = (from: number, to: number) => {
     const moved = items.slice();
@@ -344,7 +358,7 @@ const SettingsMenu = () => {
   // New items go at the end of the open part of the menu
   const addItem = () => {
     const added = items.slice();
-    added.splice(groupIndex, 0, {
+    added.splice(openPartEnd, 0, {
       type: 'custom',
       name: '',
       url: '',
@@ -355,17 +369,20 @@ const SettingsMenu = () => {
     setPickerIndex(undefined);
   };
 
-  // Default menu; custom items are kept, hidden, at the end of the open part
+  // A new group goes at the end; its items are the ones dragged below it
+  const addGroup = () => {
+    setItems([...items, { type: 'group', name: '' }]);
+    setPickerIndex(undefined);
+  };
+
+  // Default menu (no groups); custom items are kept, hidden, at the end
   const resetItems = () => {
-    const reset = DEFAULT_MENU_ITEMS.slice();
-    reset.splice(
-      reset.findIndex((item) => item.type === 'group'),
-      0,
+    setItems([
+      ...DEFAULT_MENU_ITEMS,
       ...items.flatMap((item) =>
         item.type === 'custom' ? [{ ...item, hidden: true }] : []
-      )
-    );
-    setItems(reset);
+      ),
+    ]);
     setPickerIndex(undefined);
   };
 
@@ -425,7 +442,7 @@ const SettingsMenu = () => {
               item={item}
               index={index}
               intl={intl}
-              isInGroup={index > groupIndex}
+              isInGroup={firstGroupIndex !== -1 && index > firstGroupIndex}
               isPickerOpen={pickerIndex === index}
               onTogglePicker={() =>
                 setPickerIndex(pickerIndex === index ? undefined : index)
@@ -446,6 +463,10 @@ const SettingsMenu = () => {
             <Button onClick={addItem}>
               <PlusIcon />
               <span>{intl.formatMessage(messages.addItem)}</span>
+            </Button>
+            <Button onClick={addGroup}>
+              <PlusIcon />
+              <span>{intl.formatMessage(messages.addGroup)}</span>
             </Button>
             <Button onClick={resetItems}>
               <ArrowPathIcon />

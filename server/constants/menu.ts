@@ -1,9 +1,9 @@
 // Sidebar and mobile menu, ordered and edited in Settings > Menu
 export const BUILTIN_MENU_ITEMS = [
   'discover',
+  'browse',
   'movies',
   'series',
-  'browse',
   'requests',
   'blocklist',
   'issues',
@@ -17,6 +17,11 @@ export type BuiltinMenuItemId = (typeof BUILTIN_MENU_ITEMS)[number];
 export const UNHIDEABLE_MENU_ITEMS: readonly BuiltinMenuItemId[] = [
   'users',
   'settings',
+];
+
+// Hidden in the default menu and when added to a saved one
+export const HIDDEN_BY_DEFAULT_MENU_ITEMS: readonly BuiltinMenuItemId[] = [
+  'browse',
 ];
 
 export const DEFAULT_MENU_ICON = 'BookmarkIcon';
@@ -37,7 +42,8 @@ export interface CustomMenuItem {
   hidden: boolean;
 }
 
-// Items after the group are shown in a collapsed section, opened with a click
+// Items after a group, up to the next one, are shown in a collapsed section,
+// opened with a click
 export interface MenuGroupItem {
   type: 'group';
   name: string;
@@ -52,21 +58,16 @@ export interface MenuSettings {
 const builtinItem = (id: BuiltinMenuItemId): BuiltinMenuItem => ({
   type: 'builtin',
   id,
-  hidden: false,
+  hidden: HIDDEN_BY_DEFAULT_MENU_ITEMS.includes(id),
 });
 
-const DEFAULT_GROUP: MenuGroupItem = { type: 'group', name: 'More' };
+export const DEFAULT_MENU_ITEMS: MenuItem[] =
+  BUILTIN_MENU_ITEMS.map(builtinItem);
 
-export const DEFAULT_MENU_ITEMS: MenuItem[] = [
-  ...BUILTIN_MENU_ITEMS.map(builtinItem),
-  DEFAULT_GROUP,
-];
-
-// Keeps every built-in item once and exactly one group, so saved lists stay
-// valid when built-in items are added
+// Keeps every built-in item once, so saved lists stay valid when built-in
+// items are added
 export const normalizeMenuItems = (items: MenuItem[]): MenuItem[] => {
   const seen = new Set<BuiltinMenuItemId>();
-  let hasGroup = false;
   const normalized = items
     .filter((item) => {
       if (item.type === 'builtin') {
@@ -74,11 +75,6 @@ export const normalizeMenuItems = (items: MenuItem[]): MenuItem[] => {
           return false;
         }
         seen.add(item.id);
-      } else if (item.type === 'group') {
-        if (hasGroup) {
-          return false;
-        }
-        hasGroup = true;
       }
       return true;
     })
@@ -88,15 +84,18 @@ export const normalizeMenuItems = (items: MenuItem[]): MenuItem[] => {
         : item
     );
 
-  if (!hasGroup) {
-    normalized.push(DEFAULT_GROUP);
-  }
-  // New built-in items go at the end of the open part of the menu
-  const groupIndex = normalized.findIndex((item) => item.type === 'group');
-  normalized.splice(
-    groupIndex,
-    0,
-    ...BUILTIN_MENU_ITEMS.filter((id) => !seen.has(id)).map(builtinItem)
-  );
+  // A new built-in item goes right after the one before it in the default
+  // order, or at the top
+  BUILTIN_MENU_ITEMS.forEach((id, order) => {
+    if (seen.has(id)) {
+      return;
+    }
+    const previous = BUILTIN_MENU_ITEMS[order - 1];
+    const index = normalized.findIndex(
+      (item) => item.type === 'builtin' && item.id === previous
+    );
+    normalized.splice(index + 1, 0, builtinItem(id));
+    seen.add(id);
+  });
   return normalized;
 };

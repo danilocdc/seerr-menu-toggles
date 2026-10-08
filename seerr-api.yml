@@ -728,8 +728,9 @@ components:
     MenuItem:
       type: object
       description: >-
-        A built-in item (`id`), a custom item (`name`, `url`, `icon`) or the
-        group (`name`): items after the group are shown in a collapsed section.
+        A built-in item (`id`), a custom item (`name`, `url`, `icon`) or a
+        group (`name`): items after a group, up to the next one, are shown in a
+        collapsed section.
       properties:
         type:
           type: string
@@ -739,9 +740,9 @@ components:
           enum:
             [
               discover,
+              browse,
               movies,
               series,
-              browse,
               requests,
               blocklist,
               issues,
