@@ -741,6 +741,7 @@ components:
               discover,
               movies,
               series,
+              browse,
               requests,
               blocklist,
               issues,

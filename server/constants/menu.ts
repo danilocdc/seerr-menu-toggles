@@ -3,6 +3,7 @@ export const BUILTIN_MENU_ITEMS = [
   'discover',
   'movies',
   'series',
+  'browse',
   'requests',
   'blocklist',
   'issues',
