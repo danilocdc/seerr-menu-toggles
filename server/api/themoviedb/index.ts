@@ -105,6 +105,7 @@ interface DiscoverMovieOptions {
   sortBy?: MovieSortOptions;
   watchRegion?: string;
   watchProviders?: string;
+  watchMonetizationTypes?: string;
   certification?: string;
   certificationGte?: string;
   certificationLte?: string;
@@ -126,11 +127,13 @@ interface DiscoverTvOptions {
   originalLanguage?: string;
   genre?: string;
   network?: number;
+  studio?: string;
   keywords?: string;
   excludeKeywords?: string;
   sortBy?: TvSortOptions;
   watchRegion?: string;
   watchProviders?: string;
+  watchMonetizationTypes?: string;
   withStatus?: string; // Returning Series: 0 Planned: 1 In Production: 2 Ended: 3 Cancelled: 4 Pilot: 5
   certification?: string;
   certificationGte?: string;
@@ -698,6 +701,7 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
     voteCountLte,
     watchProviders,
     watchRegion,
+    watchMonetizationTypes,
     certification,
     certificationGte,
     certificationLte,
@@ -750,6 +754,7 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
           'vote_count.lte': voteCountLte,
           watch_region: watchRegion,
           with_watch_providers: watchProviders,
+          with_watch_monetization_types: watchMonetizationTypes,
           certification: certification,
           'certification.gte': certificationGte,
           'certification.lte': certificationLte,
@@ -775,6 +780,7 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
     originalLanguage,
     genre,
     network,
+    studio,
     keywords,
     excludeKeywords,
     withRuntimeGte,
@@ -785,6 +791,7 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
     voteCountLte,
     watchProviders,
     watchRegion,
+    watchMonetizationTypes,
     withStatus,
     certification,
     certificationGte,
@@ -827,6 +834,7 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
           include_null_first_air_dates: includeEmptyReleaseDate,
           with_genres: genre,
           with_networks: network,
+          with_companies: studio,
           with_keywords: keywords,
           without_keywords: excludeKeywords,
           'with_runtime.gte': withRuntimeGte,
@@ -837,6 +845,7 @@ class TheMovieDb extends ExternalAPI implements TvShowProvider {
           'vote_count.lte': voteCountLte,
           with_watch_providers: watchProviders,
           watch_region: watchRegion,
+          with_watch_monetization_types: watchMonetizationTypes,
           with_status: withStatus,
           certification: certification,
           'certification.gte': certificationGte,

@@ -6417,6 +6417,158 @@ paths:
                         - $ref: '#/components/schemas/MovieResult'
                         - $ref: '#/components/schemas/TvResult'
                         - $ref: '#/components/schemas/PersonResult'
+  /browse:
+    get:
+      summary: Browse movies and series with filters
+      description: Returns one list of movies and series. Without filters or sort, returns trending titles.
+      tags:
+        - search
+      parameters:
+        - in: query
+          name: type
+          schema:
+            type: string
+            enum:
+              - all
+              - movie
+              - tv
+        - in: query
+          name: sortBy
+          description: Ignored when searching by name (results keep TMDB relevance)
+          schema:
+            type: string
+            enum:
+              - popularity.desc
+              - release_date.desc
+              - release_date.asc
+              - vote_average.desc
+        - in: query
+          name: cursor
+          description: nextCursor from the previous page
+          schema:
+            type: string
+        - in: query
+          name: query
+          description: Title search
+          schema:
+            type: string
+        - in: query
+          name: releaseDateGte
+          schema:
+            type: string
+            example: '2020-01-01'
+        - in: query
+          name: releaseDateLte
+          schema:
+            type: string
+            example: '2024-12-31'
+        - in: query
+          name: genres
+          description: Comma-separated Browse genre ids (any of them)
+          schema:
+            type: string
+            example: 'action,comedy'
+        - in: query
+          name: keywords
+          description: Comma-separated TMDB keyword ids (all of them)
+          schema:
+            type: string
+        - in: query
+          name: excludeKeywords
+          description: Comma-separated TMDB keyword ids
+          schema:
+            type: string
+        - in: query
+          name: language
+          description: Original language
+          schema:
+            type: string
+            example: 'en'
+        - in: query
+          name: withRuntimeGte
+          schema:
+            type: number
+        - in: query
+          name: withRuntimeLte
+          schema:
+            type: number
+        - in: query
+          name: voteAverageGte
+          schema:
+            type: number
+        - in: query
+          name: voteAverageLte
+          schema:
+            type: number
+        - in: query
+          name: voteCountGte
+          schema:
+            type: number
+        - in: query
+          name: voteCountLte
+          schema:
+            type: number
+        - in: query
+          name: certifications
+          description: Comma-separated ratings of the region (any of them)
+          schema:
+            type: string
+            example: 'L,10'
+        - in: query
+          name: watchProviders
+          description: Comma-separated TMDB provider ids, subscription only (any of them)
+          schema:
+            type: string
+            example: '8,119'
+        - in: query
+          name: studios
+          description: Comma-separated TMDB company ids (any of them)
+          schema:
+            type: string
+        - in: query
+          name: seriesStatus
+          description: Comma-separated TMDB series status codes; restricts the list to series
+          schema:
+            type: string
+            example: '0,2'
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum:
+              - requested
+              - available
+        - in: query
+          name: watchlist
+          description: Only titles on the user's watchlist
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mode:
+                    type: string
+                    enum:
+                      - trending
+                      - discover
+                      - search
+                      - library
+                  seriesOnly:
+                    type: boolean
+                  nextCursor:
+                    type: string
+                    nullable: true
+                  results:
+                    type: array
+                    items:
+                      anyOf:
+                        - $ref: '#/components/schemas/MovieResult'
+                        - $ref: '#/components/schemas/TvResult'
   /discover/keyword/{keywordId}/movies:
     get:
       summary: Get movies from keyword
