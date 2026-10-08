@@ -4,6 +4,7 @@ import PlexAPI from '@server/api/plexapi';
 import PlexTvAPI from '@server/api/plextv';
 import TautulliAPI from '@server/api/tautulli';
 import { ApiErrorCode } from '@server/constants/error';
+import { BUILTIN_MENU_ITEMS } from '@server/constants/menu';
 import { getRepository } from '@server/datasource';
 import Media from '@server/entity/Media';
 import { MediaRequest } from '@server/entity/MediaRequest';
@@ -101,6 +102,50 @@ settingsRoutes.post('/network', async (req, res) => {
   await settings.save();
 
   return res.status(200).json(settings.network);
+});
+
+const menuSchema = z.object({
+  items: z.array(
+    z.discriminatedUnion('type', [
+      z.object({
+        type: z.literal('builtin'),
+        id: z.enum(BUILTIN_MENU_ITEMS),
+        hidden: z.boolean(),
+      }),
+      z.object({
+        type: z.literal('custom'),
+        name: z.string().trim().min(1),
+        // Seerr paths only ("//host" would leave the site)
+        url: z.string().regex(/^\/(?!\/)/),
+        icon: z.string().min(1),
+        hidden: z.boolean(),
+      }),
+      z.object({
+        type: z.literal('group'),
+        name: z.string().trim().min(1),
+      }),
+    ])
+  ),
+});
+
+settingsRoutes.get('/menu', (_req, res) => {
+  const settings = getSettings();
+
+  res.status(200).json(settings.menu);
+});
+
+settingsRoutes.post('/menu', async (req, res, next) => {
+  const settings = getSettings();
+  const result = menuSchema.safeParse(req.body);
+
+  if (!result.success) {
+    return next({ status: 400, message: 'Invalid menu settings.' });
+  }
+
+  settings.menu = result.data;
+  await settings.save();
+
+  return res.status(200).json(settings.menu);
 });
 
 settingsRoutes.post('/main/regenerate', async (req, res, next) => {

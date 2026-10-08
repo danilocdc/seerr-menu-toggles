@@ -1,3 +1,5 @@
+import type { MenuItem, MenuSettings } from '@server/constants/menu';
+import { DEFAULT_MENU_ITEMS, normalizeMenuItems } from '@server/constants/menu';
 import { MediaServerType } from '@server/constants/server';
 import { Permission } from '@server/lib/permissions';
 import { runMigrations } from '@server/lib/settings/migrator';
@@ -219,6 +221,7 @@ interface FullPublicSettings extends PublicSettings {
   youtubeUrl: string;
   versionCheck: boolean;
   plexClientIdentifier: string;
+  menuItems: MenuItem[];
 }
 
 export interface NotificationAgentConfig {
@@ -390,6 +393,7 @@ export interface AllSettings {
   jobs: Record<JobId, JobSettings>;
   network: NetworkSettings;
   metadataSettings: MetadataSettings;
+  menu: MenuSettings;
   migrations: string[];
 }
 
@@ -636,6 +640,9 @@ class Settings {
         },
         apiRequestTimeout: 10000,
       },
+      menu: {
+        items: DEFAULT_MENU_ITEMS,
+      },
       migrations: [],
     };
     if (initialSettings) {
@@ -684,6 +691,14 @@ class Settings {
       this.data.metadataSettings,
       data
     );
+  }
+
+  get menu(): MenuSettings {
+    return { items: normalizeMenuItems(this.data.menu.items) };
+  }
+
+  set menu(data: MenuSettings) {
+    this.data.menu = { items: normalizeMenuItems(data.items) };
   }
 
   get radarr(): RadarrSettings[] {
@@ -745,6 +760,9 @@ class Settings {
       youtubeUrl: this.data.main.youtubeUrl,
       versionCheck: this.data.main.versionCheck,
       plexClientIdentifier: this.data.clientId,
+      menuItems: this.menu.items.filter(
+        (item) => item.type === 'group' || !item.hidden
+      ),
     };
   }
 

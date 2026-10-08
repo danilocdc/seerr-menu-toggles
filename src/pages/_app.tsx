@@ -13,6 +13,7 @@ import '@app/styles/globals.css';
 import { polyfillIntl } from '@app/utils/polyfillIntl';
 import { getHostAndPort } from '@app/utils/urlHelper';
 import '@fontsource-variable/inter';
+import { DEFAULT_MENU_ITEMS } from '@server/constants/menu';
 import { MediaServerType } from '@server/constants/server';
 import type { PublicSettingsResponse } from '@server/interfaces/api/settingsInterfaces';
 import type { AvailableLocale } from '@server/types/languages';
@@ -264,6 +265,7 @@ CoreApp.getInitialProps = async (initialProps) => {
     youtubeUrl: '',
     versionCheck: true,
     plexClientIdentifier: '',
+    menuItems: DEFAULT_MENU_ITEMS,
   };
 
   if (ctx.res) {

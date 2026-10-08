@@ -720,6 +720,56 @@ components:
           format: uuid
           description: Instance Plex OAuth client identifier
           example: 6919275e-142a-48d8-be6b-93594cbd4626
+        menuItems:
+          type: array
+          description: Visible sidebar and mobile menu items, in order
+          items:
+            $ref: '#/components/schemas/MenuItem'
+    MenuItem:
+      type: object
+      description: >-
+        A built-in item (`id`), a custom item (`name`, `url`, `icon`) or the
+        group (`name`): items after the group are shown in a collapsed section.
+      properties:
+        type:
+          type: string
+          enum: [builtin, custom, group]
+        id:
+          type: string
+          enum:
+            [
+              discover,
+              movies,
+              series,
+              requests,
+              blocklist,
+              issues,
+              users,
+              settings,
+            ]
+        name:
+          type: string
+          example: Netflix Horror Movies
+        url:
+          type: string
+          example: /discover/movies?genre=27&watchRegion=BR&watchProviders=8
+        icon:
+          type: string
+          description: Heroicons component name
+          example: FilmIcon
+        hidden:
+          type: boolean
+      required:
+        - type
+    MenuSettings:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MenuItem'
+      required:
+        - items
     MovieResult:
       type: object
       required:
@@ -2245,6 +2295,37 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MainSettings'
+  /settings/menu:
+    get:
+      summary: Get menu settings
+      description: Retrieves the sidebar and mobile menu items, in order, including hidden ones. Requires the `ADMIN` permission.
+      tags:
+        - settings
+      responses:
+        '200':
+          description: Menu settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuSettings'
+    post:
+      summary: Update menu settings
+      description: Replaces the sidebar and mobile menu items. Requires the `ADMIN` permission.
+      tags:
+        - settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MenuSettings'
+      responses:
+        '200':
+          description: Updated menu settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuSettings'
   /settings/network:
     get:
       summary: Get network settings

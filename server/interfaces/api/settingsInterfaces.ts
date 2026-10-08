@@ -1,3 +1,4 @@
+import type { MenuItem } from '@server/constants/menu';
 import type { DnsEntries, DnsStats } from 'dns-caching';
 import type { PaginatedResponse } from './common';
 
@@ -51,6 +52,8 @@ export interface PublicSettingsResponse {
   youtubeUrl: string;
   versionCheck: boolean;
   plexClientIdentifier: string;
+  // Visible menu items, in order
+  menuItems: MenuItem[];
 }
 
 export interface CacheItem {

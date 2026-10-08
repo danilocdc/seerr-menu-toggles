@@ -1,10 +1,14 @@
 import Badge from '@app/components/Common/Badge';
+import MenuIcon from '@app/components/Layout/MenuIcon';
 import VersionStatus from '@app/components/Layout/VersionStatus';
 import useClickOutside from '@app/hooks/useClickOutside';
+import useSettings from '@app/hooks/useSettings';
 import { Permission, useUser } from '@app/hooks/useUser';
 import defineMessages from '@app/utils/defineMessages';
+import { buildMenuLinks, isCurrentUrl } from '@app/utils/menuLinks';
 import { Transition, TransitionChild } from '@headlessui/react';
 import {
+  ChevronRightIcon,
   ClockIcon,
   CogIcon,
   ExclamationTriangleIcon,
@@ -15,10 +19,11 @@ import {
   UsersIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import type { BuiltinMenuItemId } from '@server/constants/menu';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { Fragment, useEffect, useRef } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useIntl } from 'react-intl';
 
 export const menuMessages = defineMessages('components.Layout.Sidebar', {
@@ -41,44 +46,52 @@ interface SidebarProps {
   revalidateRequestsCount: () => void;
 }
 
-interface SidebarLinkProps {
+export interface SidebarLinkProps {
   href: string;
   svgIcon: React.ReactNode;
-  messagesKey: keyof typeof menuMessages;
-  activeRegExp: RegExp;
+  // Built-in items use messagesKey and activeRegExp; custom items use text
+  messagesKey?: keyof typeof menuMessages;
+  text?: string;
+  activeRegExp?: RegExp;
   as?: string;
   requiredPermission?: Permission | Permission[];
   permissionType?: 'and' | 'or';
   dataTestId?: string;
+  id?: BuiltinMenuItemId;
 }
 
-const SidebarLinks: SidebarLinkProps[] = [
+export const SidebarLinks: SidebarLinkProps[] = [
   {
     href: '/',
+    id: 'discover',
     messagesKey: 'dashboard',
     svgIcon: <SparklesIcon className="mr-3 h-6 w-6" />,
     activeRegExp: /^\/(discover\/?)?$/,
   },
   {
     href: '/discover/movies',
+    id: 'movies',
     messagesKey: 'browsemovies',
     svgIcon: <FilmIcon className="mr-3 h-6 w-6" />,
     activeRegExp: /^\/discover\/movies$/,
   },
   {
     href: '/discover/tv',
+    id: 'series',
     messagesKey: 'browsetv',
     svgIcon: <TvIcon className="mr-3 h-6 w-6" />,
     activeRegExp: /^\/discover\/tv$/,
   },
   {
     href: '/requests',
+    id: 'requests',
     messagesKey: 'requests',
     svgIcon: <ClockIcon className="mr-3 h-6 w-6" />,
     activeRegExp: /^\/requests/,
   },
   {
     href: '/blocklist',
+    id: 'blocklist',
     messagesKey: 'blocklist',
     svgIcon: <EyeSlashIcon className="mr-3 h-6 w-6" />,
     activeRegExp: /^\/blocklist/,
@@ -90,6 +103,7 @@ const SidebarLinks: SidebarLinkProps[] = [
   },
   {
     href: '/issues',
+    id: 'issues',
     messagesKey: 'issues',
     svgIcon: <ExclamationTriangleIcon className="mr-3 h-6 w-6" />,
     activeRegExp: /^\/issues/,
@@ -102,6 +116,7 @@ const SidebarLinks: SidebarLinkProps[] = [
   },
   {
     href: '/users',
+    id: 'users',
     messagesKey: 'users',
     svgIcon: <UsersIcon className="mr-3 h-6 w-6" />,
     activeRegExp: /^\/users/,
@@ -110,6 +125,7 @@ const SidebarLinks: SidebarLinkProps[] = [
   },
   {
     href: '/settings',
+    id: 'settings',
     messagesKey: 'settings',
     svgIcon: <CogIcon className="mr-3 h-6 w-6" />,
     activeRegExp: /^\/settings/,
@@ -117,6 +133,10 @@ const SidebarLinks: SidebarLinkProps[] = [
     dataTestId: 'sidebar-menu-settings',
   },
 ];
+
+const builtinLinks = Object.fromEntries(
+  SidebarLinks.map((link) => [link.id, link])
+) as Record<BuiltinMenuItemId, SidebarLinkProps>;
 
 const Sidebar = ({
   open,
@@ -130,7 +150,44 @@ const Sidebar = ({
   const router = useRouter();
   const intl = useIntl();
   const { hasPermission } = useUser();
+  const { currentSettings } = useSettings();
   useClickOutside(navRef, () => setClosed());
+
+  const hasLinkPermission = (link: SidebarLinkProps) =>
+    !link.requiredPermission ||
+    hasPermission(link.requiredPermission, {
+      type: link.permissionType ?? 'and',
+    });
+
+  const { links, groupLinks, groupName } = buildMenuLinks(
+    currentSettings.menuItems,
+    builtinLinks,
+    (item): SidebarLinkProps => ({
+      href: item.url,
+      text: item.name,
+      svgIcon: <MenuIcon name={item.icon} className="mr-3 h-6 w-6" />,
+    })
+  );
+  const visibleLinks = links.filter(hasLinkPermission);
+  const visibleGroupLinks = groupLinks.filter(hasLinkPermission);
+
+  // A custom item with filters wins over the built-in page it points to
+  const isCustomLinkActive = [...visibleLinks, ...visibleGroupLinks].some(
+    (link) => !link.activeRegExp && isCurrentUrl(link.href, router.asPath)
+  );
+  const isLinkActive = (link: SidebarLinkProps) =>
+    link.activeRegExp
+      ? !isCustomLinkActive && !!router.pathname.match(link.activeRegExp)
+      : isCurrentUrl(link.href, router.asPath);
+
+  const [isGroupOpen, setIsGroupOpen] = useState(false);
+  const isGroupLinkActive = visibleGroupLinks.some(isLinkActive);
+
+  useEffect(() => {
+    if (isGroupLinkActive) {
+      setIsGroupOpen(true);
+    }
+  }, [isGroupLinkActive]);
 
   useEffect(() => {
     if (openIssuesCount) {
@@ -146,6 +203,114 @@ const Sidebar = ({
     pendingRequestsCount,
     openIssuesCount,
   ]);
+
+  const renderMobileLink = (sidebarLink: SidebarLinkProps) => {
+    return (
+      <Link
+        key={`mobile-${sidebarLink.messagesKey ?? sidebarLink.href}`}
+        href={sidebarLink.href}
+        as={sidebarLink.as}
+        onClick={() => setClosed()}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            setClosed();
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        className={`flex items-center rounded-md px-2 py-2 text-base font-medium leading-6 text-white transition duration-150 ease-in-out focus:outline-none ${
+          isLinkActive(sidebarLink)
+            ? 'bg-gradient-to-br from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500'
+            : 'hover:bg-gray-700 focus:bg-gray-700'
+        } `}
+        data-testid={`${sidebarLink.dataTestId}-mobile`}
+      >
+        {sidebarLink.svgIcon}
+        {sidebarLink.messagesKey
+          ? intl.formatMessage(menuMessages[sidebarLink.messagesKey])
+          : sidebarLink.text}
+      </Link>
+    );
+  };
+
+  const renderDesktopLink = (sidebarLink: SidebarLinkProps) => {
+    return (
+      <Link
+        key={`desktop-${sidebarLink.messagesKey ?? sidebarLink.href}`}
+        href={sidebarLink.href}
+        as={sidebarLink.as}
+        className={`group flex items-center rounded-md px-2 py-2 text-lg font-medium leading-6 text-white transition duration-150 ease-in-out focus:outline-none ${
+          isLinkActive(sidebarLink)
+            ? 'bg-gradient-to-br from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500'
+            : 'hover:bg-gray-700 focus:bg-gray-700'
+        } `}
+        data-testid={sidebarLink.dataTestId}
+      >
+        {sidebarLink.svgIcon}
+        {sidebarLink.messagesKey
+          ? intl.formatMessage(menuMessages[sidebarLink.messagesKey])
+          : sidebarLink.text}
+        {sidebarLink.messagesKey === 'requests' &&
+          pendingRequestsCount > 0 &&
+          hasPermission(Permission.MANAGE_REQUESTS) && (
+            <div className="ml-auto flex">
+              <Badge
+                className={`rounded-md bg-gradient-to-br ${
+                  isLinkActive(sidebarLink)
+                    ? 'border-indigo-600 from-indigo-700 to-purple-700'
+                    : 'border-indigo-500 from-indigo-600 to-purple-600'
+                }`}
+              >
+                {pendingRequestsCount}
+              </Badge>
+            </div>
+          )}
+        {sidebarLink.messagesKey === 'issues' &&
+          openIssuesCount > 0 &&
+          hasPermission(Permission.MANAGE_ISSUES) && (
+            <div className="ml-auto flex">
+              <Badge
+                className={`rounded-md bg-gradient-to-br ${
+                  isLinkActive(sidebarLink)
+                    ? 'border-indigo-600 from-indigo-700 to-purple-700'
+                    : 'border-indigo-500 from-indigo-600 to-purple-600'
+                }`}
+              >
+                {openIssuesCount}
+              </Badge>
+            </div>
+          )}
+      </Link>
+    );
+  };
+
+  const renderGroup = (
+    renderLink: (sidebarLink: SidebarLinkProps) => React.ReactNode,
+    textSize: string
+  ) =>
+    groupName !== undefined &&
+    visibleGroupLinks.length > 0 && (
+      <>
+        <button
+          type="button"
+          onClick={() => setIsGroupOpen(!isGroupOpen)}
+          aria-expanded={isGroupOpen}
+          className={`flex w-full items-center rounded-md px-2 py-2 ${textSize} font-medium leading-6 text-gray-300 transition duration-150 ease-in-out hover:bg-gray-700 hover:text-white focus:bg-gray-700 focus:outline-none`}
+        >
+          <ChevronRightIcon
+            className={`mr-3 h-6 w-6 transition-transform ${
+              isGroupOpen ? 'rotate-90' : ''
+            }`}
+          />
+          {groupName}
+        </button>
+        {isGroupOpen && (
+          <div className="space-y-4 pl-6">
+            {visibleGroupLinks.map(renderLink)}
+          </div>
+        )}
+      </>
+    );
 
   return (
     <>
@@ -197,40 +362,8 @@ const Sidebar = ({
                       </span>
                     </div>
                     <nav className="mt-10 flex-1 space-y-4 px-4">
-                      {SidebarLinks.filter((link) =>
-                        link.requiredPermission
-                          ? hasPermission(link.requiredPermission, {
-                              type: link.permissionType ?? 'and',
-                            })
-                          : true
-                      ).map((sidebarLink) => {
-                        return (
-                          <Link
-                            key={`mobile-${sidebarLink.messagesKey}`}
-                            href={sidebarLink.href}
-                            as={sidebarLink.as}
-                            onClick={() => setClosed()}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                setClosed();
-                              }
-                            }}
-                            role="button"
-                            tabIndex={0}
-                            className={`flex items-center rounded-md px-2 py-2 text-base font-medium leading-6 text-white transition duration-150 ease-in-out focus:outline-none ${
-                              router.pathname.match(sidebarLink.activeRegExp)
-                                ? 'bg-gradient-to-br from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500'
-                                : 'hover:bg-gray-700 focus:bg-gray-700'
-                            } `}
-                            data-testid={`${sidebarLink.dataTestId}-mobile`}
-                          >
-                            {sidebarLink.svgIcon}
-                            {intl.formatMessage(
-                              menuMessages[sidebarLink.messagesKey]
-                            )}
-                          </Link>
-                        );
-                      })}
+                      {visibleLinks.map(renderMobileLink)}
+                      {renderGroup(renderMobileLink, 'text-base')}
                     </nav>
                     {hasPermission(Permission.ADMIN) && (
                       <div className="px-2">
@@ -265,62 +398,8 @@ const Sidebar = ({
                 </span>
               </div>
               <nav className="mt-8 flex-1 space-y-4 px-4">
-                {SidebarLinks.filter((link) =>
-                  link.requiredPermission
-                    ? hasPermission(link.requiredPermission, {
-                        type: link.permissionType ?? 'and',
-                      })
-                    : true
-                ).map((sidebarLink) => {
-                  return (
-                    <Link
-                      key={`desktop-${sidebarLink.messagesKey}`}
-                      href={sidebarLink.href}
-                      as={sidebarLink.as}
-                      className={`group flex items-center rounded-md px-2 py-2 text-lg font-medium leading-6 text-white transition duration-150 ease-in-out focus:outline-none ${
-                        router.pathname.match(sidebarLink.activeRegExp)
-                          ? 'bg-gradient-to-br from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500'
-                          : 'hover:bg-gray-700 focus:bg-gray-700'
-                      } `}
-                      data-testid={sidebarLink.dataTestId}
-                    >
-                      {sidebarLink.svgIcon}
-                      {intl.formatMessage(
-                        menuMessages[sidebarLink.messagesKey]
-                      )}
-                      {sidebarLink.messagesKey === 'requests' &&
-                        pendingRequestsCount > 0 &&
-                        hasPermission(Permission.MANAGE_REQUESTS) && (
-                          <div className="ml-auto flex">
-                            <Badge
-                              className={`rounded-md bg-gradient-to-br ${
-                                router.pathname.match(sidebarLink.activeRegExp)
-                                  ? 'border-indigo-600 from-indigo-700 to-purple-700'
-                                  : 'border-indigo-500 from-indigo-600 to-purple-600'
-                              }`}
-                            >
-                              {pendingRequestsCount}
-                            </Badge>
-                          </div>
-                        )}
-                      {sidebarLink.messagesKey === 'issues' &&
-                        openIssuesCount > 0 &&
-                        hasPermission(Permission.MANAGE_ISSUES) && (
-                          <div className="ml-auto flex">
-                            <Badge
-                              className={`rounded-md bg-gradient-to-br ${
-                                router.pathname.match(sidebarLink.activeRegExp)
-                                  ? 'border-indigo-600 from-indigo-700 to-purple-700'
-                                  : 'border-indigo-500 from-indigo-600 to-purple-600'
-                              }`}
-                            >
-                              {openIssuesCount}
-                            </Badge>
-                          </div>
-                        )}
-                    </Link>
-                  );
-                })}
+                {visibleLinks.map(renderDesktopLink)}
+                {renderGroup(renderDesktopLink, 'text-lg')}
               </nav>
               {hasPermission(Permission.ADMIN) && (
                 <div className="px-2">

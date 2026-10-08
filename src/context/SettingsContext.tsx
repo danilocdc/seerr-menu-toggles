@@ -1,3 +1,4 @@
+import { DEFAULT_MENU_ITEMS } from '@server/constants/menu';
 import { MediaServerType } from '@server/constants/server';
 import type { PublicSettingsResponse } from '@server/interfaces/api/settingsInterfaces';
 import React from 'react';
@@ -34,6 +35,7 @@ const defaultSettings = {
   youtubeUrl: '',
   versionCheck: true,
   plexClientIdentifier: '',
+  menuItems: DEFAULT_MENU_ITEMS,
 };
 
 export const SettingsContext = React.createContext<SettingsContextProps>({
