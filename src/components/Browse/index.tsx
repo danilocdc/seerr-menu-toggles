@@ -208,7 +208,11 @@ const Browse = () => {
     return <ErrorPage statusCode={500} />;
   }
 
-  const title = intl.formatMessage(messages.browse);
+  // The admin can rename the menu item
+  const title =
+    currentSettings.menuItems.find(
+      (item) => item.type === 'builtin' && item.id === 'browse'
+    )?.name || intl.formatMessage(messages.browse);
   const availableFilters = BROWSE_FILTERS.filter(
     (filter) => !isFilterActive(filter, values)
   );

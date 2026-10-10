@@ -32,11 +32,12 @@ const messages = defineMessages('components.Settings.SettingsMenu', {
   menu: 'Menu',
   menuItems: 'Menu Items',
   menuItemsDescription:
-    'Drag to reorder the sidebar and the mobile menu. Items below a collapsed group, up to the next one, only show after clicking it. A hidden item can still be opened by its address; Users and Settings are always shown.',
+    'Drag to reorder the sidebar and the mobile menu. Type a name next to a built-in item to rename it; leave it empty to use the default. Items below a collapsed group, up to the next one, only show after clicking it. A hidden item can still be opened by its address; Users and Settings are always shown.',
   customItemsTip:
     'A custom item opens any Seerr page. To list movies or series with filters, apply the filters on the Movies or Series page and copy its address.',
   collapsedGroup: 'Collapsed group',
   name: 'Name',
+  renameItem: 'Rename {name}',
   url: 'Address',
   urlInvalid: 'Use a Seerr address, such as /discover/movies?genre=27',
   chooseIcon: 'Choose icon',
@@ -250,6 +251,22 @@ const MenuRow = ({
             className="lg:w-56"
           />
         )}
+        {item.type === 'builtin' && builtinLink?.messagesKey && (
+          <input
+            type="text"
+            aria-label={intl.formatMessage(messages.renameItem, {
+              name: intl.formatMessage(menuMessages[builtinLink.messagesKey]),
+            })}
+            placeholder={intl.formatMessage(
+              menuMessages[builtinLink.messagesKey]
+            )}
+            value={item.name ?? ''}
+            onChange={(e) =>
+              onChange({ ...item, name: e.target.value || undefined })
+            }
+            className="lg:w-56"
+          />
+        )}
         {item.type === 'custom' && (
           <input
             type="text"
@@ -398,7 +415,7 @@ const SettingsMenu = () => {
       await axios.post('/api/v1/settings/menu', {
         items: items.map((item) =>
           item.type === 'builtin'
-            ? item
+            ? { ...item, name: item.name?.trim() || undefined }
             : item.type === 'group'
               ? { ...item, name: item.name.trim() }
               : { ...item, name: item.name.trim(), url: toSeerrPath(item.url) }

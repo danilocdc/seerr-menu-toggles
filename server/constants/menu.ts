@@ -29,6 +29,8 @@ export const DEFAULT_MENU_ICON = 'BookmarkIcon';
 export interface BuiltinMenuItem {
   type: 'builtin';
   id: BuiltinMenuItemId;
+  // Replaces the default (translated) name when set
+  name?: string;
   hidden: boolean;
 }
 

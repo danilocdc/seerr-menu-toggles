@@ -25,7 +25,8 @@ export interface MenuGroup<T> {
 export const buildMenuLinks = <T>(
   items: MenuItem[],
   builtinLinks: Record<BuiltinMenuItemId, T>,
-  toCustomLink: (item: CustomMenuItem) => T
+  toCustomLink: (item: CustomMenuItem) => T,
+  withName: (link: T, name: string) => T
 ) => {
   const links: T[] = [];
   const groups: MenuGroup<T>[] = [];
@@ -35,7 +36,11 @@ export const buildMenuLinks = <T>(
       groups.push({ name: item.name, links: [] });
     } else if (!item.hidden) {
       (groups[groups.length - 1]?.links ?? links).push(
-        item.type === 'builtin' ? builtinLinks[item.id] : toCustomLink(item)
+        item.type === 'builtin'
+          ? item.name
+            ? withName(builtinLinks[item.id], item.name)
+            : builtinLinks[item.id]
+          : toCustomLink(item)
       );
     }
   });

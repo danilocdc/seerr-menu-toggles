@@ -179,7 +179,8 @@ const Sidebar = ({
       href: item.url,
       text: item.name,
       svgIcon: <MenuIcon name={item.icon} className="mr-3 h-6 w-6" />,
-    })
+    }),
+    (link, text) => ({ ...link, text })
   );
   const visibleLinks = links.filter(hasLinkPermission);
   // Groups without a visible item are left out
@@ -245,9 +246,9 @@ const Sidebar = ({
         data-testid={`${sidebarLink.dataTestId}-mobile`}
       >
         {sidebarLink.svgIcon}
-        {sidebarLink.messagesKey
-          ? intl.formatMessage(menuMessages[sidebarLink.messagesKey])
-          : sidebarLink.text}
+        {sidebarLink.text ??
+          (sidebarLink.messagesKey &&
+            intl.formatMessage(menuMessages[sidebarLink.messagesKey]))}
       </Link>
     );
   };
@@ -266,9 +267,9 @@ const Sidebar = ({
         data-testid={sidebarLink.dataTestId}
       >
         {sidebarLink.svgIcon}
-        {sidebarLink.messagesKey
-          ? intl.formatMessage(menuMessages[sidebarLink.messagesKey])
-          : sidebarLink.text}
+        {sidebarLink.text ??
+          (sidebarLink.messagesKey &&
+            intl.formatMessage(menuMessages[sidebarLink.messagesKey]))}
         {sidebarLink.messagesKey === 'requests' &&
           pendingRequestsCount > 0 &&
           hasPermission(Permission.MANAGE_REQUESTS) && (

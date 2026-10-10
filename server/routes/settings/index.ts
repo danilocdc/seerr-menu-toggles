@@ -110,6 +110,11 @@ const menuSchema = z.object({
       z.object({
         type: z.literal('builtin'),
         id: z.enum(BUILTIN_MENU_ITEMS),
+        name: z
+          .string()
+          .trim()
+          .optional()
+          .transform((name) => name || undefined),
         hidden: z.boolean(),
       }),
       z.object({

@@ -198,7 +198,8 @@ const MobileMenu = ({
       content: item.name,
       svgIcon: <MenuIcon name={item.icon} className="h-6 w-6" />,
       svgIconSelected: <MenuIcon name={item.icon} solid className="h-6 w-6" />,
-    })
+    }),
+    (link, content) => ({ ...link, content })
   );
   const visibleLinks = links.filter(hasLinkPermission);
   // Groups without a visible item are left out
