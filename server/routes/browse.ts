@@ -36,6 +36,7 @@ import { In } from 'typeorm';
 import { z } from 'zod';
 
 const PAGE_SIZE = 20;
+const TMDB_PAGE_SIZE = 20;
 // TMDB never returns pages past 500
 const MAX_TMDB_PAGE = 500;
 // Upper bound of TMDB pages read per request when filters drop most results
@@ -70,6 +71,9 @@ const BrowseQuerySchema = z.object({
   genres: csv.pipe(
     z.array(z.enum(Object.keys(BROWSE_GENRES) as [BrowseGenreId]))
   ),
+  excludeGenres: csv.pipe(
+    z.array(z.enum(Object.keys(BROWSE_GENRES) as [BrowseGenreId]))
+  ),
   keywords: csvNumbers,
   excludeKeywords: csvNumbers,
   language: z.string().optional(),
@@ -80,9 +84,12 @@ const BrowseQuerySchema = z.object({
   voteCountGte: optionalNumber,
   voteCountLte: optionalNumber,
   certifications: csv,
+  excludeCertifications: csv,
   watchProviders: csvNumbers,
+  excludeWatchProviders: csvNumbers,
   studios: csvNumbers,
   seriesStatus: csvNumbers,
+  excludeSeriesStatus: csvNumbers,
   status: z.enum(BROWSE_STATUSES).optional(),
   // The OpenAPI validator already turns it into a boolean
   watchlist: z
@@ -199,10 +206,14 @@ const hasFilters = (query: BrowseQuery): boolean =>
     query.voteAverageLte !== undefined ||
     query.voteCountGte !== undefined ||
     query.voteCountLte !== undefined ||
+    query.excludeGenres.length ||
     query.certifications.length ||
+    query.excludeCertifications.length ||
     query.watchProviders.length ||
+    query.excludeWatchProviders.length ||
     query.studios.length ||
     query.seriesStatus.length ||
+    query.excludeSeriesStatus.length ||
     query.status ||
     query.watchlist
   );
@@ -253,6 +264,14 @@ const matchesDetails = (
     }
   }
 
+  if (query.excludeGenres.length) {
+    const unwanted = genreIds(query.excludeGenres, mediaType);
+
+    if (details.genres.some((genre) => unwanted.includes(genre.id))) {
+      return false;
+    }
+  }
+
   const keywords = (
     mediaType === 'movie'
       ? details.keywords?.keywords
@@ -285,7 +304,7 @@ const matchesDetails = (
     return false;
   }
 
-  if (query.certifications.length) {
+  if (query.certifications.length || query.excludeCertifications.length) {
     const certification =
       mediaType === 'movie'
         ? details.release_dates?.results
@@ -295,7 +314,14 @@ const matchesDetails = (
             (rating) => rating.iso_3166_1 === region
           )?.rating;
 
-    if (!certification || !query.certifications.includes(certification)) {
+    if (
+      query.certifications.length &&
+      (!certification || !query.certifications.includes(certification))
+    ) {
+      return false;
+    }
+
+    if (certification && query.excludeCertifications.includes(certification)) {
       return false;
     }
   }
@@ -307,6 +333,19 @@ const matchesDetails = (
     if (
       !providers.some((provider) =>
         query.watchProviders.includes(provider.provider_id)
+      )
+    ) {
+      return false;
+    }
+  }
+
+  if (query.excludeWatchProviders.length) {
+    const providers =
+      details['watch/providers']?.results?.[region]?.flatrate ?? [];
+
+    if (
+      providers.some((provider) =>
+        query.excludeWatchProviders.includes(provider.provider_id)
       )
     ) {
       return false;
@@ -328,6 +367,15 @@ const matchesDetails = (
       !query.seriesStatus.some(
         (status) => BROWSE_SERIES_STATUSES[status] === details.status
       ))
+  ) {
+    return false;
+  }
+
+  if (
+    mediaType === 'tv' &&
+    query.excludeSeriesStatus.some(
+      (status) => BROWSE_SERIES_STATUSES[status] === details.status
+    )
   ) {
     return false;
   }
@@ -382,11 +430,18 @@ const detailsToItem = (details: Details): Item =>
     ? { mediaType: 'movie', result: mapMovieDetailsToResult(details.details) }
     : { mediaType: 'tv', result: mapTvDetailsToResult(details.details) };
 
-// Merges sorted TMDB result streams into one page, keeping a position for each
+// Position of the next item of a stream, counted from its first result
+const rankOf = (position: StreamPosition): number =>
+  (position.page - 1) * TMDB_PAGE_SIZE + position.index;
+
+// Merges sorted TMDB result streams into one page, keeping a position for each.
+// 'rank' alternates between streams by position: TMDB popularity is not on the
+// same scale for movies and series (series are several times higher), so
+// comparing it would list every series before the first movie.
 const mergeStreams = async (
   streams: Stream[],
   positions: Partial<Record<string, StreamPosition>>,
-  compare: (a: Item, b: Item) => number
+  compare: ((a: Item, b: Item) => number) | 'rank'
 ): Promise<{ items: Item[]; positions: Record<string, StreamPosition> }> => {
   const state = streams.map((stream) => ({
     stream,
@@ -438,10 +493,12 @@ const mergeStreams = async (
       if (
         !entry.position.done &&
         (!best ||
-          compare(
-            entry.items[entry.position.index],
-            best.items[best.position.index]
-          ) < 0)
+          (compare === 'rank'
+            ? rankOf(entry.position) < rankOf(best.position)
+            : compare(
+                entry.items[entry.position.index],
+                best.items[best.position.index]
+              ) < 0))
       ) {
         best = entry;
       }
@@ -606,7 +663,8 @@ browseRoutes.get('/', async (req, res, next) => {
     } else {
       let streams: Stream[];
       // Search results keep TMDB's relevance order
-      let compare = compareItems(sortBy);
+      let compare: ((a: Item, b: Item) => number) | 'rank' =
+        sortBy === 'popularity.desc' ? 'rank' : compareItems(sortBy);
 
       if (query.query) {
         mode = 'search';
@@ -707,6 +765,39 @@ browseRoutes.get('/', async (req, res, next) => {
         compare = () => 0;
       } else {
         mode = 'discover';
+
+        // TMDB has no "without" for these: send what is left after the
+        // exclusions (an excluded rating only exists in the region's list)
+        const regionCertifications = query.excludeCertifications.length
+          ? [
+              ...new Set(
+                [
+                  ...(await tmdb.getMovieCertifications()).certifications[
+                    region
+                  ],
+                  ...(await tmdb.getTvCertifications()).certifications[region],
+                ].map((item) => item.certification)
+              ),
+            ]
+          : [];
+        const certifications = (
+          query.certifications.length
+            ? query.certifications
+            : regionCertifications
+        ).filter((item) => !query.excludeCertifications.includes(item));
+        const seriesStatuses = (
+          query.seriesStatus.length
+            ? query.seriesStatus
+            : query.excludeSeriesStatus.length
+              ? Object.keys(BROWSE_SERIES_STATUSES).map(Number)
+              : []
+        ).filter((item) => !query.excludeSeriesStatus.includes(item));
+        const watchProviders = query.watchProviders.filter(
+          (item) => !query.excludeWatchProviders.includes(item)
+        );
+        const hasProviders =
+          watchProviders.length || query.excludeWatchProviders.length;
+
         const common = {
           language,
           originalLanguage: query.language,
@@ -724,21 +815,21 @@ browseRoutes.get('/', async (req, res, next) => {
           )?.toString(),
           voteCountLte: query.voteCountLte?.toString(),
           studio: query.studios.join('|') || undefined,
-          watchProviders: query.watchProviders.join('|') || undefined,
-          watchRegion: query.watchProviders.length ? region : undefined,
-          watchMonetizationTypes: query.watchProviders.length
-            ? 'flatrate'
-            : undefined,
-          certification: query.certifications.join('|') || undefined,
-          certificationCountry: query.certifications.length
-            ? region
-            : undefined,
+          watchProviders: watchProviders.join('|') || undefined,
+          excludeWatchProviders:
+            query.excludeWatchProviders.join('|') || undefined,
+          watchRegion: hasProviders ? region : undefined,
+          watchMonetizationTypes: hasProviders ? 'flatrate' : undefined,
+          certification: certifications.join('|') || undefined,
+          certificationCountry: certifications.length ? region : undefined,
         };
 
         streams = types.map((type) => ({
           key: type,
           fetch: async (page) => {
             const genre = genreIds(query.genres, type).join('|') || undefined;
+            const excludeGenre =
+              genreIds(query.excludeGenres, type).join('|') || undefined;
             const data =
               type === 'movie'
                 ? await tmdb.getDiscoverMovies({
@@ -746,6 +837,7 @@ browseRoutes.get('/', async (req, res, next) => {
                     page,
                     sortBy,
                     genre,
+                    excludeGenre,
                     primaryReleaseDateGte: toDate(query.releaseDateGte),
                     primaryReleaseDateLte: toDate(query.releaseDateLte),
                   })
@@ -757,9 +849,10 @@ browseRoutes.get('/', async (req, res, next) => {
                       'first_air_date'
                     ) as TvSortOptions,
                     genre,
+                    excludeGenre,
                     firstAirDateGte: toDate(query.releaseDateGte),
                     firstAirDateLte: toDate(query.releaseDateLte),
-                    withStatus: query.seriesStatus.join('|') || undefined,
+                    withStatus: seriesStatuses.join('|') || undefined,
                   });
 
             return {

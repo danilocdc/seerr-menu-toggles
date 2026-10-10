@@ -2,12 +2,12 @@ import CachedImage from '@app/components/Common/CachedImage';
 import { SmallLoadingSpinner } from '@app/components/Common/LoadingSpinner';
 import MultiRangeSlider from '@app/components/Common/MultiRangeSlider';
 import Tooltip from '@app/components/Common/Tooltip';
-import { KeywordSelector, StatusSelector } from '@app/components/Selector';
+import { KeywordSelector } from '@app/components/Selector';
 import useSettings from '@app/hooks/useSettings';
 import { useUser } from '@app/hooks/useUser';
 import globalMessages from '@app/i18n/globalMessages';
 import defineMessages from '@app/utils/defineMessages';
-import { CheckCircleIcon } from '@heroicons/react/24/solid';
+import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/solid';
 import type { TmdbCompanySearchResponse } from '@server/api/themoviedb/interfaces';
 import {
   BROWSE_DEFAULT_REGION,
@@ -60,7 +60,10 @@ export const messages = defineMessages('components.Browse', {
   minutes: '{value} min',
   seriesOnly: '{value} (series only)',
   seriesOnlyHint:
-    'This filter only applies to series: movies are hidden while it is active.',
+    'Included statuses only apply to series: movies are hidden while one is included. Excluded statuses keep movies.',
+  triStateHint:
+    'Click once to include, twice to exclude, three times to clear.',
+  notValue: 'not {value}',
   queryPlaceholder: 'Title in any language…',
   selectLanguage: 'Select a language…',
   searchStudios: 'Search studios…',
@@ -78,10 +81,12 @@ export const BROWSE_PARAMS = [
   'releaseDateGte',
   'releaseDateLte',
   'genres',
+  'excludeGenres',
   'keywords',
   'excludeKeywords',
   'language',
   'certifications',
+  'excludeCertifications',
   'withRuntimeGte',
   'withRuntimeLte',
   'voteAverageGte',
@@ -89,8 +94,10 @@ export const BROWSE_PARAMS = [
   'voteCountGte',
   'voteCountLte',
   'watchProviders',
+  'excludeWatchProviders',
   'studios',
   'seriesStatus',
+  'excludeSeriesStatus',
   'status',
   'watchlist',
 ] as const;
@@ -100,20 +107,20 @@ export type BrowseValues = Partial<Record<BrowseParam, string>>;
 // Order of the "Add Filter" menu
 export const BROWSE_FILTERS = [
   { id: 'query', params: ['query'] },
-  { id: 'genres', params: ['genres'] },
+  { id: 'genres', params: ['genres', 'excludeGenres'] },
   { id: 'releaseDate', params: ['releaseDateGte', 'releaseDateLte'] },
-  { id: 'watchProviders', params: ['watchProviders'] },
+  { id: 'watchProviders', params: ['watchProviders', 'excludeWatchProviders'] },
   { id: 'status', params: ['status'] },
   { id: 'watchlist', params: ['watchlist'] },
   { id: 'language', params: ['language'] },
-  { id: 'certifications', params: ['certifications'] },
+  { id: 'certifications', params: ['certifications', 'excludeCertifications'] },
   { id: 'runtime', params: ['withRuntimeGte', 'withRuntimeLte'] },
   { id: 'voteAverage', params: ['voteAverageGte', 'voteAverageLte'] },
   { id: 'voteCount', params: ['voteCountGte', 'voteCountLte'] },
   { id: 'keywords', params: ['keywords'] },
   { id: 'excludeKeywords', params: ['excludeKeywords'] },
   { id: 'studios', params: ['studios'] },
-  { id: 'seriesStatus', params: ['seriesStatus'] },
+  { id: 'seriesStatus', params: ['seriesStatus', 'excludeSeriesStatus'] },
 ] as const satisfies readonly { id: string; params: readonly BrowseParam[] }[];
 export type BrowseFilter = (typeof BROWSE_FILTERS)[number];
 
@@ -276,6 +283,18 @@ export const FilterSummary = ({
     filter.id === 'watchProviders'
   );
   const list = (items: string[]) => intl.formatList(items);
+  // "A, B, not C"
+  const triList = (include: string[], exclude: string[]) =>
+    list([
+      ...include,
+      ...exclude.map((item) =>
+        intl.formatMessage(messages.notValue, { value: item })
+      ),
+    ]);
+
+  const providerName = (id: string) =>
+    providers.find((provider) => provider.id === Number(id))?.name ?? id;
+  const statusName = (id: string) => BROWSE_SERIES_STATUSES[Number(id)] ?? id;
 
   const summary = (): string | undefined => {
     switch (filter.id) {
@@ -295,7 +314,10 @@ export const FilterSummary = ({
                 value: formatDate(intl, values.releaseDateLte ?? ''),
               });
       case 'genres':
-        return list(splitList(values.genres).map(genreName));
+        return triList(
+          splitList(values.genres).map(genreName),
+          splitList(values.excludeGenres).map(genreName)
+        );
       case 'keywords':
       case 'excludeKeywords':
         return list(keywordNames);
@@ -304,7 +326,10 @@ export const FilterSummary = ({
       case 'language':
         return languageName(intl, values.language ?? '');
       case 'certifications':
-        return list(splitList(values.certifications));
+        return triList(
+          splitList(values.certifications),
+          splitList(values.excludeCertifications)
+        );
       case 'runtime':
         return intl.formatMessage(messages.minutes, {
           value: formatRange(
@@ -318,21 +343,20 @@ export const FilterSummary = ({
       case 'voteCount':
         return formatRange(intl, values.voteCountGte, values.voteCountLte);
       case 'watchProviders':
-        return list(
-          splitList(values.watchProviders).map(
-            (id) =>
-              providers.find((provider) => provider.id === Number(id))?.name ??
-              id
-          )
+        return triList(
+          splitList(values.watchProviders).map(providerName),
+          splitList(values.excludeWatchProviders).map(providerName)
         );
-      case 'seriesStatus':
-        return intl.formatMessage(messages.seriesOnly, {
-          value: list(
-            splitList(values.seriesStatus).map(
-              (id) => BROWSE_SERIES_STATUSES[Number(id)] ?? id
-            )
-          ),
-        });
+      case 'seriesStatus': {
+        const statuses = triList(
+          splitList(values.seriesStatus).map(statusName),
+          splitList(values.excludeSeriesStatus).map(statusName)
+        );
+
+        return values.seriesStatus
+          ? intl.formatMessage(messages.seriesOnly, { value: statuses })
+          : statuses;
+      }
       case 'status':
         return intl.formatMessage(
           values.status === 'available'
@@ -350,19 +374,102 @@ export const FilterSummary = ({
   return <>{text ? `${label}: ${text}` : label}</>;
 };
 
-const pillClass = (active: boolean) =>
+type TriState = 'include' | 'exclude' | undefined;
+
+// A list filter keeps its included items in one param and its excluded items
+// in another; each click moves an item include -> exclude -> none
+const triState = (
+  values: BrowseValues,
+  includeParam: BrowseParam,
+  excludeParam: BrowseParam,
+  item: string
+): TriState =>
+  splitList(values[includeParam]).includes(item)
+    ? 'include'
+    : splitList(values[excludeParam]).includes(item)
+      ? 'exclude'
+      : undefined;
+
+const cycleTriState = (
+  values: BrowseValues,
+  includeParam: BrowseParam,
+  excludeParam: BrowseParam,
+  item: string
+): BrowseValues => {
+  const without = (param: BrowseParam) =>
+    splitList(values[param])
+      .filter((current) => current !== item)
+      .join(',') || undefined;
+  const withItem = (param: BrowseParam) =>
+    [...splitList(values[param]), item].join(',');
+
+  switch (triState(values, includeParam, excludeParam, item)) {
+    case 'include':
+      return {
+        ...values,
+        [includeParam]: without(includeParam),
+        [excludeParam]: withItem(excludeParam),
+      };
+    case 'exclude':
+      return { ...values, [excludeParam]: without(excludeParam) };
+    default:
+      return { ...values, [includeParam]: withItem(includeParam) };
+  }
+};
+
+const pillClass = (state: TriState | boolean) =>
   `rounded-full border px-3 py-1 text-sm transition ${
-    active
+    state === true || state === 'include'
       ? 'border-indigo-500 bg-indigo-600 text-white hover:bg-indigo-500'
-      : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-400 hover:text-white'
+      : state === 'exclude'
+        ? 'border-red-500 bg-red-700 text-white line-through hover:bg-red-600'
+        : 'border-gray-600 bg-gray-800 text-gray-300 hover:border-gray-400 hover:text-white'
   }`;
 
-const toggleInList = (value: string | undefined, item: string) => {
-  const items = splitList(value);
-  const next = items.includes(item)
-    ? items.filter((current) => current !== item)
-    : [...items, item];
-  return next.join(',') || undefined;
+const TriStatePills = ({
+  items,
+  includeParam,
+  excludeParam,
+  values,
+  setValues,
+}: {
+  items: { id: string; label: string }[];
+  includeParam: BrowseParam;
+  excludeParam: BrowseParam;
+  values: BrowseValues;
+  setValues: React.Dispatch<React.SetStateAction<BrowseValues>>;
+}) => {
+  const intl = useIntl();
+
+  return (
+    <div className="flex flex-col gap-3">
+      <span className="text-sm text-gray-400">
+        {intl.formatMessage(messages.triStateHint)}
+      </span>
+      <div className="flex flex-wrap gap-2">
+        {items.map(({ id, label }) => {
+          const state = triState(values, includeParam, excludeParam, id);
+
+          return (
+            <button
+              key={id}
+              type="button"
+              className={pillClass(state)}
+              onClick={() =>
+                setValues((current) =>
+                  cycleTriState(current, includeParam, excludeParam, id)
+                )
+              }
+            >
+              {state === 'include' && '✓ '}
+              {state === 'exclude' && '✕ '}
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
 };
 
 const StudioSelector = ({
@@ -573,18 +680,16 @@ export const FilterEditor = ({
       );
     case 'genres':
       return (
-        <div className="flex flex-wrap gap-2">
-          {Object.entries(BROWSE_GENRES).map(([id, genre]) => (
-            <button
-              key={id}
-              type="button"
-              className={pillClass(splitList(values.genres).includes(id))}
-              onClick={() => set('genres', toggleInList(values.genres, id))}
-            >
-              {genre.name}
-            </button>
-          ))}
-        </div>
+        <TriStatePills
+          items={Object.entries(BROWSE_GENRES).map(([id, genre]) => ({
+            id,
+            label: genre.name,
+          }))}
+          includeParam="genres"
+          excludeParam="excludeGenres"
+          values={values}
+          setValues={setValues}
+        />
       );
     case 'keywords':
     case 'excludeKeywords':
@@ -613,25 +718,16 @@ export const FilterEditor = ({
           {certificationsLoading ? (
             <SmallLoadingSpinner />
           ) : (
-            <div className="flex flex-wrap gap-2">
-              {certifications.map((certification) => (
-                <button
-                  key={certification}
-                  type="button"
-                  className={pillClass(
-                    splitList(values.certifications).includes(certification)
-                  )}
-                  onClick={() =>
-                    set(
-                      'certifications',
-                      toggleInList(values.certifications, certification)
-                    )
-                  }
-                >
-                  {certification}
-                </button>
-              ))}
-            </div>
+            <TriStatePills
+              items={certifications.map((certification) => ({
+                id: certification,
+                label: certification,
+              }))}
+              includeParam="certifications"
+              excludeParam="excludeCertifications"
+              values={values}
+              setValues={setValues}
+            />
           )}
         </div>
       );
@@ -678,14 +774,18 @@ export const FilterEditor = ({
       return (
         <div className="flex flex-col gap-3">
           <span className="text-sm text-gray-400">
-            {intl.formatMessage(messages.watchProvidersHint, { region })}
+            {intl.formatMessage(messages.watchProvidersHint, { region })}{' '}
+            {intl.formatMessage(messages.triStateHint)}
           </span>
           {providersLoading ? (
             <SmallLoadingSpinner />
           ) : (
             <div className="provider-icons grid gap-2">
               {providers.map((provider) => {
-                const isActive = splitList(values.watchProviders).includes(
+                const state = triState(
+                  values,
+                  'watchProviders',
+                  'excludeWatchProviders',
                   provider.id.toString()
                 );
                 return (
@@ -693,15 +793,18 @@ export const FilterEditor = ({
                     <button
                       type="button"
                       className={`provider-container relative w-full rounded-lg ring-1 ${
-                        isActive
+                        state === 'include'
                           ? 'bg-gray-600 ring-indigo-500 hover:bg-gray-500'
-                          : 'bg-gray-700 ring-gray-500 hover:bg-gray-600'
+                          : state === 'exclude'
+                            ? 'bg-red-900 ring-red-500 hover:bg-red-800'
+                            : 'bg-gray-700 ring-gray-500 hover:bg-gray-600'
                       }`}
                       onClick={() =>
-                        set(
-                          'watchProviders',
-                          toggleInList(
-                            values.watchProviders,
+                        setValues((current) =>
+                          cycleTriState(
+                            current,
+                            'watchProviders',
+                            'excludeWatchProviders',
                             provider.id.toString()
                           )
                         )
@@ -713,12 +816,24 @@ export const FilterEditor = ({
                           src={`https://image.tmdb.org/t/p/original${provider.logoPath}`}
                           alt={provider.name}
                           fill
-                          className="rounded-lg object-contain"
+                          className={`rounded-lg object-contain ${
+                            state === 'exclude' ? 'opacity-40 grayscale' : ''
+                          }`}
                         />
                       </div>
-                      {isActive && (
-                        <div className="pointer-events-none absolute -left-1 -top-1 text-indigo-100 opacity-90">
-                          <CheckCircleIcon className="h-6 w-6" />
+                      {state && (
+                        <div
+                          className={`pointer-events-none absolute -left-1 -top-1 opacity-90 ${
+                            state === 'exclude'
+                              ? 'text-red-200'
+                              : 'text-indigo-100'
+                          }`}
+                        >
+                          {state === 'exclude' ? (
+                            <XCircleIcon className="h-6 w-6" />
+                          ) : (
+                            <CheckCircleIcon className="h-6 w-6" />
+                          )}
                         </div>
                       )}
                     </button>
@@ -742,18 +857,15 @@ export const FilterEditor = ({
           <span className="text-sm text-gray-400">
             {intl.formatMessage(messages.seriesOnlyHint)}
           </span>
-          <StatusSelector
-            isMulti
-            defaultValue={splitList(values.seriesStatus).join('|')}
-            onChange={(options) =>
-              set(
-                'seriesStatus',
-                options
-                  ?.map((option) => option.value)
-                  .filter((id) => id in BROWSE_SERIES_STATUSES)
-                  .join(',')
-              )
-            }
+          <TriStatePills
+            items={Object.entries(BROWSE_SERIES_STATUSES).map(([id, name]) => ({
+              id,
+              label: name,
+            }))}
+            includeParam="seriesStatus"
+            excludeParam="excludeSeriesStatus"
+            values={values}
+            setValues={setValues}
           />
         </div>
       );
